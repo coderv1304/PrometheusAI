@@ -30,7 +30,7 @@ graph = [
 ]
 
 bedrock = ["boto3>=1.35,<2.0"]
-mcp = ["mcp>=1.8,<2.0"]
+mcp = ["mcp>=1.8,<3.0"]
 dev = [
   "pytest>=8.3,<9.0",
   "pytest-asyncio>=0.24,<1.0",
