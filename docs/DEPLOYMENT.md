@@ -57,7 +57,9 @@ uv run prometheus-ai demo --host 127.0.0.1 --port 8000
 ```
 
 Open <http://127.0.0.1:8000>. The UI labels every incident as synthetic.
-Approve one from another terminal:
+While the demo is still running, approve one from another terminal. Replace
+`INCIDENT_ID` with an ID printed by this demo run; IDs change every time the
+demo starts:
 
 ```powershell
 uv run prometheus-ai approve INCIDENT_ID --approver varun --reason "narrowest safe action"
@@ -112,11 +114,16 @@ kubectl get pods -n kube-system -l k8s-app=calico-node
 ## 6. Load the images
 
 ```powershell
+docker build -f deploy/postgres/Dockerfile -t prometheusai-postgres:16.4-pgvector0.8.1 deploy/postgres
+kind load docker-image prometheusai-postgres:16.4-pgvector0.8.1 --name prometheus-ai
 kind load docker-image prometheusai:0.1.0 --name prometheus-ai
 kind load docker-image prometheusai-demo:0.1.0 --name prometheus-ai
 ```
 
 `imagePullPolicy: IfNotPresent` is already set, so the loaded images are used.
+The custom Postgres image keeps the original Alpine PostgreSQL UID for volume
+compatibility and adds pgvector. The repository enables the extension and
+creates embedding columns during startup.
 
 ## 7. Create namespaces and secrets
 
@@ -142,6 +149,7 @@ $PG_PASSWORD    = New-Secret
 kubectl -n prometheus-ai create secret generic prometheus-ai-secrets `
   --from-literal=approver-token=$APPROVER_TOKEN `
   --from-literal=webhook-token=$WEBHOOK_TOKEN `
+  --from-literal=policy-token=$POLICY_TOKEN `
   --from-literal=database-url="postgresql://prometheus_ai:$PG_PASSWORD@prometheus-ai-postgres.data.svc.cluster.local:5432/prometheus_ai"
 
 kubectl -n data create secret generic prometheus-ai-secrets `
@@ -171,7 +179,13 @@ kubectl apply -f deploy/k8s/base/01-serviceaccounts-rbac.yaml
 kubectl apply -f deploy/k8s/base/02-networkpolicies.yaml
 kubectl apply -f deploy/k8s/base/03-postgres.yaml
 kubectl -n data rollout status statefulset/prometheus-ai-postgres --timeout=180s
+```
 
+The Postgres image includes pgvector, which the repository schema enables on
+startup for embedding columns. Keep the Postgres pod UID/GID at `70` so it can
+read an existing data volume initialized with that ownership.
+
+```powershell
 kubectl apply -f deploy/k8s/base/04-policy-service.yaml
 kubectl -n policy rollout status deployment/prometheus-ai-policy --timeout=180s
 

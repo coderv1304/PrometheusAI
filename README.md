@@ -54,7 +54,9 @@ uv run prometheus-ai demo --host 127.0.0.1 --port 8000
 ```
 
 Open <http://127.0.0.1:8000>. The UI marks every incident as synthetic.
-Approve one from another terminal:
+While the demo is still running, approve one from another terminal. Replace
+`INCIDENT_ID` with an ID printed by this demo run; IDs change every time the
+demo starts:
 
 ```bash
 uv run prometheus-ai approve INCIDENT_ID \

@@ -1,8 +1,8 @@
 """Postgres-backed repository.
 
 Incidents are stored as JSONB (the domain object is the schema); audit events
-are append-only rows. pgvector is optional: runbook similarity falls back to
-full-text search when the extension is unavailable.
+are append-only rows. pgvector stores embeddings for runbook and postmortem
+similarity search.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE IF NOT EXISTS incidents (
     id TEXT PRIMARY KEY,
     fingerprint TEXT NOT NULL,
@@ -65,8 +67,10 @@ CREATE TABLE IF NOT EXISTS postmortems (
     incident_id TEXT PRIMARY KEY REFERENCES incidents(id) ON DELETE CASCADE,
     markdown TEXT NOT NULL,
     root_cause_category TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    embedding vector(768)
 );
+ALTER TABLE postmortems ADD COLUMN IF NOT EXISTS embedding vector(768);
 
 CREATE TABLE IF NOT EXISTS runbook_chunks (
     id TEXT PRIMARY KEY,

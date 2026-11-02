@@ -49,8 +49,22 @@ spec:
           envFrom:
             - configMapRef:
                 name: policy-config
-            - secretRef:
-                name: policy-secrets
+          env:
+            - name: PROMETHEUS_AI_POLICY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: policy-secrets
+                  key: policy-token
+            - name: PROMETHEUS_AI_APPROVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: policy-secrets
+                  key: approver-token
+            - name: PROMETHEUS_AI_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: policy-secrets
+                  key: webhook-token
           ports:
             - name: http
               containerPort: 8081

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import platform
@@ -136,29 +137,33 @@ def cmd_demo(args: argparse.Namespace) -> int:
         print("demo requires PROMETHEUS_AI_MODEL_BACKEND=fake", file=sys.stderr)
         return 2
 
-    async def prepare():
+    async def run_demo() -> None:
         from prometheus_ai.services.bootstrap import build_services
 
         services = await build_services(settings)
-        created = await _seed(services, _demo_payload(DEMO_ALERTS))
-        return services, created
+        try:
+            created = await _seed(services, _demo_payload(DEMO_ALERTS))
+            print(f"seeded {len(created)} synthetic incidents (no cluster was touched):")
+            for incident_id in created:
+                print(f"  http://{args.host}:{args.port}/incidents/{incident_id}")
+            print()
+            print("Synthetic mode: the deterministic demo model and fake tools are active.")
+            print("Approve one with the dev token 'dev-approval-token' to see the full path.")
 
-    services, created = asyncio.run(prepare())
-    print(f"seeded {len(created)} synthetic incidents (no cluster was touched):")
-    for incident_id in created:
-        print(f"  http://{args.host}:{args.port}/incidents/{incident_id}")
-    print()
-    print("Synthetic mode: the deterministic demo model and fake tools are active.")
-    print("Approve one with the dev token 'dev-approval-token' to see the full path.")
-    try:
-        uvicorn.run(
-            _build_app(settings, services=services),
-            host=args.host,
-            port=args.port,
-            log_level=args.log_level,
-        )
-    finally:
-        asyncio.run(services.close())
+            server = uvicorn.Server(
+                uvicorn.Config(
+                    _build_app(settings, services=services),
+                    host=args.host,
+                    port=args.port,
+                    log_level=args.log_level,
+                )
+            )
+            await server.serve()
+        finally:
+            await services.close()
+
+    with contextlib.suppress(KeyboardInterrupt):
+        asyncio.run(run_demo())
     return 0
 
 

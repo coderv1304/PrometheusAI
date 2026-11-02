@@ -1,16 +1,4 @@
-# Pinned requirements for PrometheusAI (generated from uv.lock).
-#
-# Covers runtime, every optional extra (postgres, graph, bedrock, mcp), the
-# development tools (pytest, ruff) and the project itself in editable mode.
-# Requires Python 3.12+.
-#
-# Install:     pip install -r requirements.txt
-# Regenerate the pinned body (then keep this header):
-#   uv export --format requirements-txt --all-extras --no-hashes --no-header --no-annotate
-# Runtime-only: drop the `-e .` line and the dev tools, or use `uv sync --no-dev`.
-#
-# The Docker image does NOT use this file; it installs from uv.lock with
-# `--no-dev --frozen` for reproducibility.
+
 -e .
 annotated-doc==0.0.5
 annotated-types==0.8.0

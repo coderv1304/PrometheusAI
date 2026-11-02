@@ -75,6 +75,7 @@ write access. See `docs/adr/0002-separate-policy-service.md`.
 
 - **Incidents and audit:** Postgres JSONB, with an append-only trigger on
   `audit_events`. The in-memory repository is for tests and the offline demo.
+- **Embeddings:** pgvector in Postgres stores runbook and postmortem vectors.
 - **Graph checkpoints:** LangGraph `AsyncPostgresSaver` in the cluster; the
   in-memory saver is used by the T1 harness and local demo.
 - **Execution ledger:** SQLite in the policy pod (`/app/.prometheus-ai`). It

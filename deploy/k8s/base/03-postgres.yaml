@@ -40,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres
-          image: postgres:16.4-alpine
+          image: prometheusai-postgres:16.4-pgvector0.8.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: postgres

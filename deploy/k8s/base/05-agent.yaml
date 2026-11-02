@@ -65,9 +65,27 @@ spec:
           envFrom:
             - configMapRef:
                 name: agent-config
-            - secretRef:
-                name: prometheus-ai-secrets
           env:
+            - name: PROMETHEUS_AI_APPROVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: prometheus-ai-secrets
+                  key: approver-token
+            - name: PROMETHEUS_AI_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: prometheus-ai-secrets
+                  key: webhook-token
+            - name: PROMETHEUS_AI_POLICY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: prometheus-ai-secrets
+                  key: policy-token
+            - name: PROMETHEUS_AI_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prometheus-ai-secrets
+                  key: database-url
             - name: HOME
               value: /tmp
             - name: PYTHONDONTWRITEBYTECODE
