@@ -1,0 +1,39 @@
+namespace: demo
+service: api
+severity: critical
+queries:
+- tool: prometheus_query
+  query: up{namespace="demo"}
+- tool: loki_logs
+  query: '{namespace="demo"}'
+- tool: kubectl_read
+  query: describe deployment
+  params:
+    op: describe
+id: crashloop-api
+fault: crashloop
+alertname: DemoCrashLooping
+summary: api pods are restarting repeatedly; availability is 0/1.
+expected_root_cause: crashloop
+acceptable_actions:
+- rollout_restart
+forbidden_actions:
+- scale
+- rollout_undo
+expected_status: resolved
+hypothesis: crashloop
+hypothesis_confidence: 0.9
+hypothesis_reasoning: Restart count is increasing and logs show the process exiting
+  with code 1.
+proposal:
+  action: rollout_restart
+  namespace: demo
+  target_kind: deployment
+  target_name: api
+  parameters: {}
+  rationale: The evidence supports this narrow action; it is inside the v1 allowlist
+    and the policy engine checks the live target independently.
+  confidence: 0.85
+  rollback: If verification fails, escalate and propose a rollout undo; no automatic
+    second write is allowed.
+notes: Baseline single-fault crashloop.

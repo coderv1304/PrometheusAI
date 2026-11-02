@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Demo overlay: same objects as base, with the image tags CI publishes.
+# Secrets are not generated here on purpose; create them out of band.
+resources:
+  - ../../base
+
+images:
+  - name: prometheusai
+    newName: prometheusai
+    newTag: 0.1.0
+  - name: prometheusai-demo
+    newName: prometheusai-demo
+    newTag: 0.1.0

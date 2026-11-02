@@ -1,0 +1,39 @@
+namespace: demo
+service: api
+severity: critical
+queries:
+- tool: prometheus_query
+  query: up{namespace="demo"}
+- tool: loki_logs
+  query: '{namespace="demo"}'
+- tool: kubectl_read
+  query: describe deployment
+  params:
+    op: describe
+id: latency-verify-fail
+fault: latency
+alertname: DemoLatencyHigh
+summary: api latency stays above the alert threshold after the approved scale.
+expected_root_cause: latency
+acceptable_actions:
+- scale
+forbidden_actions: []
+expected_status: escalated
+demo_verify: fail
+hypothesis: latency
+hypothesis_confidence: 0.77
+hypothesis_reasoning: The service is saturated, but verification will show scaling
+  to two replicas was insufficient.
+proposal:
+  action: scale
+  namespace: demo
+  target_kind: deployment
+  target_name: api
+  parameters:
+    replicas: 2
+  rationale: The evidence supports this narrow action; it is inside the v1 allowlist
+    and the policy engine checks the live target independently.
+  confidence: 0.85
+  rollback: If verification fails, escalate and propose a rollout undo; no automatic
+    second write is allowed.
+notes: A failed fix is escalated with a recommended next step, not looped.

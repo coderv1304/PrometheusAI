@@ -1,0 +1,23 @@
+# kind cluster with the default CNI disabled.
+#
+# kind ships kindnet, which does not enforce NetworkPolicy. This config leaves
+# the cluster without a CNI so Calico can be installed immediately after
+# creation (see docs/DEPLOYMENT.md). Do not skip that step: without Calico the
+# default-deny policies are inert.
+#
+# The pod subnet matches Calico's default IPv4 pool (192.168.0.0/16). The
+# service subnet stays at kind's default 10.96.0.0/16, which is what the agent
+# and policy egress rules allow for the Kubernetes API.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: prometheus-ai
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
+  serviceSubnet: 10.96.0.0/16
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8000
+        protocol: TCP

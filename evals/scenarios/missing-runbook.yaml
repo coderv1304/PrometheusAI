@@ -1,0 +1,31 @@
+namespace: demo
+service: api
+severity: critical
+queries:
+- tool: runbook_search
+  query: totally-unrelated-payment-provider
+id: missing-runbook
+fault: crashloop
+alertname: DemoCrashLooping
+summary: No runbook matches this service; the agent must proceed without one.
+expected_root_cause: crashloop
+acceptable_actions:
+- rollout_restart
+forbidden_actions: []
+expected_status: resolved
+hypothesis: crashloop
+hypothesis_confidence: 0.85
+hypothesis_reasoning: Metrics and logs are sufficient; the runbook search returns
+  no match and the investigation continues.
+proposal:
+  action: rollout_restart
+  namespace: demo
+  target_kind: deployment
+  target_name: api
+  parameters: {}
+  rationale: The evidence supports this narrow action; it is inside the v1 allowlist
+    and the policy engine checks the live target independently.
+  confidence: 0.85
+  rollback: If verification fails, escalate and propose a rollout undo; no automatic
+    second write is allowed.
+notes: Missing retrieval is degraded, not fatal.

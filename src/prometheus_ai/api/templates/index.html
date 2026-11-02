@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Incidents · PrometheusAI{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Operations</div>
+    <h1>Incident console</h1>
+    <p class="lede">Alert → investigation → approval → verified fix, with every tool call and every denial on the record.</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn btn--ghost" href="/api/incidents">Raw JSON</a>
+    <a class="btn btn--ghost" href="/metrics">Metrics</a>
+  </div>
+</div>
+
+{% if synthetic %}
+<div class="banner">
+  <strong>Synthetic mode.</strong>
+  <span>The demo model and synthetic tools are active. No cluster is read or written, and these runs must not be reported as model-quality evidence. Set <code>PROMETHEUS_AI_MODEL_BACKEND=ollama</code> for a real investigation path.</span>
+</div>
+{% endif %}
+
+<div class="grid grid--4" style="margin-bottom: 22px;">
+  <div class="card stat">
+    <div class="stat-label">Awaiting approval</div>
+    <div class="stat-value stat-value--amber">{{ counts.get("awaiting_approval", 0) }}</div>
+    <div class="stat-note">Writes blocked until a human decides</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Investigating</div>
+    <div class="stat-value stat-value--gold">{{ counts.get("investigating", 0) + counts.get("received", 0) }}</div>
+    <div class="stat-note">Bounded to 6 tool calls each</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Resolved</div>
+    <div class="stat-value stat-value--emerald">{{ counts.get("resolved", 0) }}</div>
+    <div class="stat-note">Verified after an approved action</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Escalated</div>
+    <div class="stat-value stat-value--ruby">{{ counts.get("escalated", 0) + counts.get("failed", 0) }}</div>
+    <div class="stat-note">Denied, rejected, or verification failed</div>
+  </div>
+</div>
+
+<div class="split">
+  <div class="stack">
+    <div class="card card--flush">
+      <div class="card-head" style="padding: 18px 20px 0;">
+        <div>
+          <h2>Recent incidents</h2>
+          <div class="card-sub">Newest first · deduplicated by alert fingerprint</div>
+        </div>
+        <span class="chip">{{ incidents|length }} shown</span>
+      </div>
+      {% if incidents %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Incident</th>
+              <th>Service</th>
+              <th>Severity</th>
+              <th>Status</th>
+              <th>Evidence</th>
+              <th>Started</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for incident in incidents %}
+            <tr class="incident-row">
+              <td>
+                <a class="row-link" href="/incidents/{{ incident.id }}">{{ incident.alertname }}</a>
+                <span class="cell-sub mono">{{ incident.id }}</span>
+              </td>
+              <td>
+                <span class="mono">{{ incident.service }}</span>
+                <span class="cell-sub">{{ incident.namespace }}</span>
+              </td>
+              <td><span class="sev sev--{{ incident.severity }}">{{ incident.severity }}</span></td>
+              <td>
+                <span class="pill pill--{{ status_tone(incident.status) }}">
+                  <span class="icon">{{ status_icon(incident.status) }}</span>
+                  {{ incident.status|status_label }}
+                </span>
+              </td>
+              <td>{{ incident.tool_calls }} calls</td>
+              <td class="mono small">{{ incident.started_at|short_time }}<span class="cell-sub">{{ incident.started_at.strftime("%d %b") }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        <div class="glyph">◎</div>
+        <h2>No incidents yet</h2>
+        <p>Post an Alertmanager payload to start an investigation. In synthetic mode the whole loop runs offline.</p>
+        <pre class="notice" style="text-align: left; overflow-x: auto; margin-top: 18px;">curl -s http://localhost:8000/webhooks/alertmanager \
+  -H 'Content-Type: application/json' \
+  -d '{"alerts":[{"status":"firing","labels":{"alertname":"DemoCrashLooping","namespace":"demo","service":"api","severity":"critical","demo_fault":"crashloop"},"annotations":{"summary":"api is crashlooping"},"fingerprint":"demo-1"}]}'</pre>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <aside class="stack">
+    <div class="card">
+      <div class="card-head">
+        <h3>Evaluation status</h3>
+        <span class="chip">{{ (eval.tier if eval else "T1") }}</span>
+      </div>
+      {% if eval %}
+        {% set m = eval.metrics %}
+        <div class="stat-label">Unsafe-action rate</div>
+        <div class="stat-value {{ 'stat-value--emerald' if m.unsafe_action_rate == 0 else 'stat-value--ruby' }}" style="font-size: 1.8rem;">{{ "%.1f%%"|format(m.unsafe_action_rate * 100) }}</div>
+        <dl class="kv">
+          <dt>Scenarios</dt><dd>{{ eval.scenarios }}</dd>
+          <dt>Action correctness</dt><dd>{{ "%.0f%%"|format(m.action_correctness * 100) }}</dd>
+          <dt>Tool correctness</dt><dd>{{ "%.0f%%"|format(m.tool_call_correctness * 100) }}</dd>
+          <dt>Gate</dt><dd>{{ "passed" if eval.gate.passed else "FAILED" }}</dd>
+        </dl>
+        <p class="small muted" style="margin-bottom: 0;">{{ eval.notes }}</p>
+        <p style="margin: 10px 0 0;"><a href="/evals">Read the numbers and their limits →</a></p>
+      {% else %}
+        <p class="muted">No eval report yet. Run <code>prometheus-ai eval --tier t1</code> to produce <code>evals/out/latest.json</code>.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Safety boundary</h3></div>
+      <ul class="small muted" style="padding-left: 18px; margin: 0;">
+        <li>Writes require an approval record for the exact action hash.</li>
+        <li>Allowlist: restart, undo, scale 1–5 — deployments in <code>demo</code> only.</li>
+        <li>Live resource lookup rejects hallucinated targets.</li>
+        <li>Idempotency key prevents duplicate execution after a crash.</li>
+        <li>Policy is code; it never reads model instructions.</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+
+{% endblock %}

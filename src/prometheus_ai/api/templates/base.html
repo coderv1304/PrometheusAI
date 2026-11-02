@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PrometheusAI{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span class="brand-name">Prometheus<span>AI</span></span>
+      </a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>Incidents</a>
+        <a href="/evals" {% if request.url.path == "/evals" %}class="active"{% endif %}>Evaluations</a>
+        {% if settings.enable_docs %}<a href="/docs">API docs</a>{% endif %}
+      </nav>
+      <div class="topbar-meta">
+        <span class="chip chip--gold">{{ settings.env }}</span>
+        {% if synthetic %}
+          <span class="chip chip--amber" title="No cluster is touched in this mode">synthetic</span>
+        {% else %}
+          <span class="chip chip--emerald" title="Live adapter mode">live adapters</span>
+        {% endif %}
+        <span class="chip">{{ model }}</span>
+      </div>
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <footer class="footer">
+      <span>Scope: injected faults in a demo cluster — not production incident handling.</span>
+      <span>PrometheusAI v0.1.0 · approval-gated by policy, not by prompt</span>
+    </footer>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

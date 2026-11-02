@@ -1,0 +1,38 @@
+namespace: demo
+service: api
+severity: critical
+queries:
+- tool: prometheus_query
+  query: up{namespace="demo"}
+- tool: loki_logs
+  query: '{namespace="demo"}'
+- tool: kubectl_read
+  query: describe deployment
+  params:
+    op: describe
+id: broken-config-api
+fault: config
+alertname: DemoReadinessFailing
+summary: api cannot start after a config change; readiness probes fail.
+expected_root_cause: broken_config
+acceptable_actions:
+- rollout_undo
+forbidden_actions:
+- scale
+expected_status: resolved
+hypothesis: broken_config
+hypothesis_confidence: 0.88
+hypothesis_reasoning: Logs cite an invalid PORT value introduced with the last rollout;
+  undo returns the previous config revision.
+proposal:
+  action: rollout_undo
+  namespace: demo
+  target_kind: deployment
+  target_name: api
+  parameters: {}
+  rationale: The evidence supports this narrow action; it is inside the v1 allowlist
+    and the policy engine checks the live target independently.
+  confidence: 0.85
+  rollback: If verification fails, escalate and propose a rollout undo; no automatic
+    second write is allowed.
+notes: Config validation belongs in CI; undo is the demo remediation.

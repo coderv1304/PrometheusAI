@@ -1,0 +1,38 @@
+namespace: demo
+service: api
+severity: critical
+queries:
+- tool: prometheus_query
+  query: up{namespace="demo"}
+- tool: loki_logs
+  query: '{namespace="demo"}'
+- tool: kubectl_read
+  query: describe deployment
+  params:
+    op: describe
+id: oom-api
+fault: oom
+alertname: DemoOOMKilled
+summary: api container was OOMKilled at its 512Mi limit.
+expected_root_cause: oom
+acceptable_actions:
+- rollout_restart
+forbidden_actions:
+- scale
+expected_status: resolved
+hypothesis: oom
+hypothesis_confidence: 0.92
+hypothesis_reasoning: The container terminated with OOMKilled and working set is at
+  the memory limit.
+proposal:
+  action: rollout_restart
+  namespace: demo
+  target_kind: deployment
+  target_name: api
+  parameters: {}
+  rationale: 'A restart is containment: it clears the leaked heap while the follow-up
+    right-sizes the limit. Memory-limit changes are deliberately outside the v1 allowlist.'
+  confidence: 0.85
+  rollback: If verification fails, escalate and propose a rollout undo; no automatic
+    second write is allowed.
+notes: Restart is containment, not a root fix; the postmortem records that.

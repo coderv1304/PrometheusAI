@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Evaluations · PrometheusAI{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Measurement</div>
+    <h1>Evaluation results</h1>
+    <p class="lede">Two tiers: deterministic checks gate every pull request; live model runs are nightly and compared with a stored baseline.</p>
+  </div>
+</div>
+
+{% if eval %}
+  {% set m = eval.metrics %}
+  <div class="grid grid--4" style="margin-bottom: 22px;">
+    <div class="card stat">
+      <div class="stat-label">Unsafe actions</div>
+      <div class="stat-value {{ 'stat-value--emerald' if m.unsafe_action_rate == 0 else 'stat-value--ruby' }}">{{ "%.1f%%"|format(m.unsafe_action_rate * 100) }}</div>
+      <div class="stat-note">Hard gate: must be exactly 0</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">Action correctness</div>
+      <div class="stat-value stat-value--gold">{{ "%.0f%%"|format(m.action_correctness * 100) }}</div>
+      <div class="stat-note">Proposal inside the acceptable set</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">Tool-call correctness</div>
+      <div class="stat-value stat-value--sapphire">{{ "%.0f%%"|format(m.tool_call_correctness * 100) }}</div>
+      <div class="stat-note">Valid schema, no loops</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">p95 latency</div>
+      <div class="stat-value">{{ "%.0f"|format(m.p95_latency_ms) }}<span style="font-size: 1rem; color: var(--muted);"> ms</span></div>
+      <div class="stat-note">Synthetic harness, not a model claim</div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Run detail</h2>
+          <div class="card-sub">Generated {{ eval.generated_at }}</div>
+        </div>
+        <span class="pill pill--{{ 'emerald' if eval.gate.passed else 'ruby' }}">
+          <span class="icon">{{ '✓' if eval.gate.passed else '✕' }}</span>
+          {{ "gate passed" if eval.gate.passed else "gate failed" }}
+        </span>
+      </div>
+      <dl class="kv">
+        <dt>Tier</dt><dd>{{ eval.tier }}</dd>
+        <dt>Scenarios</dt><dd>{{ eval.scenarios }}</dd>
+        <dt>Root-cause accuracy</dt><dd>{{ "%.0f%%"|format(m.root_cause_accuracy * 100) }}</dd>
+        <dt>Mean steps</dt><dd>{{ "%.1f"|format(m.mean_steps) }}</dd>
+        <dt>Token cost</dt><dd>{{ m.cost_usd|money }}</dd>
+        <dt>Baseline</dt><dd>{{ eval.baseline or "none" }}</dd>
+      </dl>
+      {% if eval.regressions %}
+        <div class="banner banner--danger" style="margin: 16px 0 0;">
+          <strong>Regressions.</strong>
+          <span>{{ eval.regressions|join(", ") }}</span>
+        </div>
+      {% endif %}
+      <p class="small muted" style="margin: 16px 0 0;">{{ eval.notes }}</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Scenario results</h3><span class="chip">{{ eval.results|length }}</span></div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Scenario</th><th>Root cause</th><th>Safe</th></tr></thead>
+          <tbody>
+            {% for row in eval.results %}
+            <tr>
+              <td class="mono small">{{ row.id }}</td>
+              <td class="small">{{ row.root_cause }}</td>
+              <td>
+                <span class="pill pill--{{ 'emerald' if row.safe else 'ruby' }}">
+                  <span class="icon">{{ '✓' if row.safe else '✕' }}</span>{{ "safe" if row.safe else "unsafe" }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 22px;">
+    <div class="card-head"><h3>What these numbers do and do not prove</h3></div>
+    <ul class="small muted" style="padding-left: 18px; margin: 0;">
+      <li><strong>T1 is a harness test.</strong> It uses deterministic fixtures, so 100% action correctness means the plumbing and safety gate work — not that a model is accurate.</li>
+      <li><strong>No live model run is published yet.</strong> Root-cause accuracy and variance require T2 with a real model; the README says so explicitly.</li>
+      <li><strong>Faults are injected</strong> in a three-service demo cluster. This is not production incident handling.</li>
+      <li>With 15–40 scenarios the confidence intervals are wide; report them rather than a single point estimate.</li>
+    </ul>
+  </div>
+{% else %}
+  <div class="card empty">
+    <div class="glyph">∅</div>
+    <h2>No report yet</h2>
+    <p class="muted">Run the deterministic tier to generate <code>evals/out/latest.json</code>:</p>
+    <pre class="notice" style="text-align: left; margin-top: 16px;">uv run prometheus-ai eval --tier t1</pre>
+  </div>
+{% endif %}
+
+{% endblock %}

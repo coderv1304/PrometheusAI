@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-config
+  namespace: prometheus-ai
+data:
+  PROMETHEUS_AI_ENV: production
+  PROMETHEUS_AI_MODEL_BACKEND: ollama
+  PROMETHEUS_AI_OLLAMA_URL: http://ollama.ollama.svc.cluster.local:11434
+  PROMETHEUS_AI_OLLAMA_MODEL: qwen2.5:7b-instruct
+  PROMETHEUS_AI_PROMETHEUS_URL: http://prometheus.monitoring.svc.cluster.local:9090
+  PROMETHEUS_AI_LOKI_URL: http://loki.monitoring.svc.cluster.local:3100
+  PROMETHEUS_AI_POLICY_MODE: http
+  PROMETHEUS_AI_POLICY_URL: http://prometheus-ai-policy.policy.svc.cluster.local:8081
+  PROMETHEUS_AI_CHECKPOINT_BACKEND: postgres
+  PROMETHEUS_AI_ENABLE_DOCS: "false"
+  PROMETHEUS_AI_DRY_RUN: "false"
+  PROMETHEUS_AI_ALLOWED_NAMESPACES: '["demo"]'
+  PROMETHEUS_AI_ALLOWED_ACTIONS: '["rollout_restart","scale","rollout_undo"]'
+  PROMETHEUS_AI_MAX_TOOL_CALLS: "6"
+  PROMETHEUS_AI_MAX_REHYPOTHESIS: "2"
+  PROMETHEUS_AI_MAX_WRITES_PER_HOUR: "3"
+  PROMETHEUS_AI_COST_CAP_USD: "15"
+  PROMETHEUS_AI_NODE_TIMEOUT_SECONDS: "60"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-ai
+  namespace: prometheus-ai
+  labels:
+    app: prometheus-ai-agent
+    app.kubernetes.io/part-of: prometheus-ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus-ai-agent
+  template:
+    metadata:
+      labels:
+        app: prometheus-ai-agent
+        app.kubernetes.io/part-of: prometheus-ai
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: prometheus-ai-agent
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: prometheusai:0.1.0
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+          envFrom:
+            - configMapRef:
+                name: agent-config
+            - secretRef:
+                name: prometheus-ai-secrets
+          env:
+            - name: HOME
+              value: /tmp
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: state
+              mountPath: /app/.prometheus-ai
+            - name: tmp
+              mountPath: /tmp
+            - name: runbooks
+              mountPath: /app/docs/runbooks
+              readOnly: true
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: runbooks
+          configMap:
+            name: runbooks
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-ai
+  namespace: prometheus-ai
+  labels:
+    app: prometheus-ai-agent
+spec:
+  selector:
+    app: prometheus-ai-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

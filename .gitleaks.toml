@@ -1,0 +1,27 @@
+# gitleaks configuration.
+#
+# The default rules stay enabled. The allowlist only covers values that are
+# deliberately fake and are documented as development defaults. Real tokens
+# must never appear in the tree, including in tests and docs.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented demo credentials, fixture tokens and generated examples"
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)tests/''',
+  '''(^|/)evals/scenarios/''',
+  '''deploy/k8s/base/secrets\.example\.yaml$''',
+  '''SECURITY\.md$''',
+]
+regexes = [
+  '''dev-approval-token''',
+  '''dev-policy-token''',
+  '''test-approval-token''',
+  '''test-webhook-token''',
+  '''test-policy-token''',
+  '''REPLACE_ME''',
+  '''varun@example\.invalid''',
+]

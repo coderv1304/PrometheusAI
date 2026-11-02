@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: prometheus-ai-base
+
+# Everything here is namespaced explicitly per object: the app spans five
+# namespaces (agent, policy, data, demo, monitoring) and no single namespace
+# override is correct.
+resources:
+  - 00-namespaces.yaml
+  - 01-serviceaccounts-rbac.yaml
+  - 02-networkpolicies.yaml
+  - 03-postgres.yaml
+  - 04-policy-service.yaml
+  - 05-agent.yaml
+  - 06-demo-app.yaml
+  - 07-monitoring.yaml
+  - 08-runbooks.yaml
+
+# Replace these with the digest-pinned references produced by CI. Tags alone
+# are not an integrity control; signatures are verified against the digest.
+images:
+  - name: prometheusai
+    newTag: 0.1.0
+  - name: prometheusai-demo
+    newTag: 0.1.0
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: prometheus-ai
+    includeSelectors: false

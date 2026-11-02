@@ -1,0 +1,102 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.14"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: uv sync --frozen --extra dev --extra graph --extra postgres
+
+      - name: Lint
+        run: uv run ruff check src tests scripts
+
+      - name: Unit, API and manifest tests
+        run: uv run pytest -q -p no:warnings
+
+      - name: T1 evaluation gate
+        run: uv run prometheus-ai eval --tier t1 --verbose
+
+      - name: Regenerate version report (smoke test)
+        run: uv run prometheus-ai versions
+
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t1-report
+          path: |
+            evals/out/latest.json
+            docs/VERSIONS.md
+          if-no-files-found: ignore
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: prometheusai:ci
+
+      - name: Build demo image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./demo
+          push: false
+          load: true
+          tags: prometheusai-demo:ci
+
+      - name: Smoke-test the image as a non-root, read-only container
+        run: |
+          docker run --rm --read-only --user 10001:10001 \
+            --tmpfs /tmp --tmpfs /app/.prometheus-ai \
+            -e PROMETHEUS_AI_MODEL_BACKEND=fake \
+            prometheusai:ci version
+
+  manifests:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.4
+      - name: Render the kustomization
+        run: kubectl kustomize deploy/k8s/base > rendered.yaml
+      - name: Validate the rendered objects
+        run: |
+          docker run --rm -v "$PWD:/work" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary /work/rendered.yaml

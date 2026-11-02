@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}{{ incident.alertname }} · PrometheusAI{% endblock %}
+{% block content %}
+
+<div style="margin-bottom: 18px;">
+  <a href="/" class="small">← All incidents</a>
+</div>
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Incident {{ incident.id }}</div>
+    <h1>{{ incident.alertname }}</h1>
+    <div class="btn-row small muted">
+      <span class="mono">{{ incident.namespace }}/{{ incident.service }}</span>
+      <span>·</span>
+      <span class="sev sev--{{ incident.severity }}">{{ incident.severity }}</span>
+      <span>·</span>
+      <span>started {{ incident.started_at.strftime("%d %b %Y, %H:%M:%S") }} UTC</span>
+    </div>
+  </div>
+  <div class="btn-row">
+    <span class="pill pill--{{ status_tone(incident.status) }}">
+      <span class="icon">{{ status_icon(incident.status) }}</span>
+      {{ incident.status|status_label }}
+    </span>
+    {% if incident.postmortem_md %}
+      <a class="btn btn--ghost btn--sm" href="/incidents/{{ incident.id }}/postmortem">Postmortem</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if synthetic %}
+<div class="banner">
+  <strong>Synthetic run.</strong>
+  <span>This incident used deterministic demo tools. It demonstrates the approval and policy path only.</span>
+</div>
+{% endif %}
+
+{% if incident.status == "awaiting_approval" %}
+<div class="banner">
+  <strong>Human approval required.</strong>
+  <span>No write has been issued. The policy engine cannot execute until a decision is recorded against action hash <code>{{ incident.proposal.action_hash[:12] }}…</code>.</span>
+</div>
+{% elif incident.status == "escalated" %}
+<div class="banner banner--danger">
+  <strong>Escalated.</strong>
+  <span>{{ incident.error or "A human must review this incident." }} No further write will be attempted automatically.</span>
+</div>
+{% elif incident.status == "resolved" %}
+<div class="banner banner--info">
+  <strong>Resolved and verified.</strong>
+  <span>The approved action ran, the verify window passed, and a postmortem was recorded.</span>
+</div>
+{% endif %}
+
+<div class="split">
+  <div class="stack">
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Investigation</h2>
+          <div class="card-sub">Bounded: max 6 read calls, 2 re-hypothesis rounds, wall-clock timeout per node.</div>
+        </div>
+        <span class="chip">{{ incident.tool_calls }}/{{ settings.max_tool_calls }} calls</span>
+      </div>
+      <ul class="timeline">
+        {% for step in steps %}
+        <li class="{{ step.state }}">
+          <span class="dot">{{ loop.index }}</span>
+          <div class="step-title">{{ step.name }}</div>
+          <div class="step-meta">{{ step.meta }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    {% if incident.hypothesis %}
+    <div class="card">
+      <div class="card-head">
+        <h2>Hypothesis</h2>
+        <span class="chip chip--gold">{{ incident.hypothesis.category }}</span>
+      </div>
+      <p>{{ incident.hypothesis.reasoning }}</p>
+      <div class="tiny">Confidence {{ "%.0f%%"|format(incident.hypothesis.confidence * 100) }}</div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Evidence</h2>
+          <div class="card-sub">Untrusted content is labelled, delimited, and never treated as instructions.</div>
+        </div>
+        <span class="chip">{{ incident.evidence|length }} items</span>
+      </div>
+      {% if incident.evidence %}
+        {% for item in incident.evidence %}
+        <details class="evidence {{ 'is-untrusted' if item.untrusted }}">
+          <summary>
+            <span class="ev-main">
+              <span class="tag">{{ item.source }}</span>
+              {% if item.untrusted %}<span class="tag tag--untrusted">untrusted</span>{% endif %}
+              <span class="ev-summary">{{ item.summary }}</span>
+            </span>
+            <span class="tiny mono">{{ item.collected_at|short_time }}</span>
+          </summary>
+          <div class="ev-body">
+            <div class="tiny" style="margin-bottom: 4px;">Query</div>
+            <code class="small" style="overflow-wrap: anywhere;">{{ item.query }}</code>
+            <pre>{{ item.detail }}</pre>
+          </div>
+        </details>
+        {% endfor %}
+      {% else %}
+        <div class="notice">No evidence has been collected yet.</div>
+      {% endif %}
+    </div>
+
+    {% if incident.proposal %}
+    <div class="card card--gold">
+      <div class="card-head">
+        <h2>Proposed remediation</h2>
+        <span class="chip chip--amber">one action</span>
+      </div>
+      <div class="proposal">
+        <div class="action-line">
+          <span class="action-name">{{ incident.proposal.action }}</span>
+          <span class="muted">on</span>
+          <span class="mono">{{ incident.proposal.namespace }}/{{ incident.proposal.target_name }}</span>
+          <span class="chip">{{ incident.proposal.target_kind }}</span>
+        </div>
+        <p style="margin: 8px 0 0;">{{ incident.proposal.rationale }}</p>
+        <dl class="kv">
+          <dt>Parameters</dt><dd class="mono">{{ incident.proposal.parameters }}</dd>
+          <dt>Confidence</dt><dd>{{ "%.0f%%"|format(incident.proposal.confidence * 100) }}</dd>
+          <dt>Rollback plan</dt><dd>{{ incident.proposal.rollback }}</dd>
+          <dt>Action hash</dt><dd class="hash">{{ incident.proposal.action_hash }}</dd>
+        </dl>
+      </div>
+      <p class="small muted" style="margin: 12px 0 0;">Every write is preceded by a server-side dry run. Approval is bound to the hash above; editing the action invalidates it.</p>
+    </div>
+    {% endif %}
+
+    {% if incident.dry_run %}
+    <div class="card">
+      <div class="card-head">
+        <h2>Pre-approval dry run</h2>
+        <span class="pill pill--{{ 'emerald' if incident.dry_run.ok else 'ruby' }}">
+          <span class="icon">{{ '✓' if incident.dry_run.ok else '✕' }}</span>
+          {{ 'passed' if incident.dry_run.ok else 'failed' }}
+        </span>
+      </div>
+      <p class="small muted">{{ incident.dry_run.summary }}</p>
+      <dl class="kv">
+        <dt>Checked</dt><dd class="mono small">{{ incident.dry_run.checked_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC</dd>
+        <dt>Bound hash</dt><dd class="hash">{{ incident.dry_run.action_hash }}</dd>
+        {% if incident.dry_run.command %}<dt>Command</dt><dd class="mono small">{{ incident.dry_run.command|join(" ") }}</dd>{% endif %}
+      </dl>
+      {% if incident.dry_run.stdout %}<pre class="notice" style="overflow-x: auto;">{{ incident.dry_run.stdout }}</pre>{% endif %}
+      {% if incident.dry_run.error %}<pre class="notice" style="overflow-x: auto; color: var(--ruby);">{{ incident.dry_run.error }}</pre>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Approval</h2>
+        {% if incident.approval %}
+          <span class="pill pill--{{ 'emerald' if incident.approval.decision == 'approve' else 'ruby' }}">
+            <span class="icon">{{ '✓' if incident.approval.decision == 'approve' else '✕' }}</span>
+            {{ incident.approval.decision|status_label }}
+          </span>
+        {% else %}
+          <span class="pill pill--amber"><span class="icon">◆</span> Pending</span>
+        {% endif %}
+      </div>
+
+      {% if incident.approval %}
+        <dl class="kv">
+          <dt>Decision</dt><dd>{{ incident.approval.decision }}</dd>
+          <dt>Approver</dt><dd>{{ incident.approval.approver }}</dd>
+          <dt>When</dt><dd class="mono small">{{ incident.approval.created_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC</dd>
+          {% if incident.approval.reason %}<dt>Reason</dt><dd>{{ incident.approval.reason }}</dd>{% endif %}
+          <dt>Bound hash</dt><dd class="hash">{{ incident.approval.action_hash }}</dd>
+        </dl>
+      {% elif incident.status == "awaiting_approval" %}
+        <p class="small muted">Approving applies the action only if the policy engine passes all checks. Rejecting ends the incident as escalated, with your reason stored.</p>
+        <form method="post" action="/ui/incidents/{{ incident.id }}/decision">
+          <div class="form-row">
+            <div class="field">
+              <label for="approver">Your name</label>
+              <input id="approver" name="approver" required minlength="2" maxlength="120" autocomplete="name" placeholder="Asha (on-call SRE)">
+            </div>
+            <div class="field">
+              <label for="token">Approval token</label>
+              <input id="token" name="token" type="password" required autocomplete="current-password" placeholder="••••••••">
+              {% if settings.is_dev %}<span class="hint">Dev default: <code>dev-approval-token</code></span>{% endif %}
+            </div>
+          </div>
+          <div class="field">
+            <label for="reason">Reason (stored in the audit log)</label>
+            <textarea id="reason" name="reason" maxlength="500" placeholder="Evidence matches the runbook; restart is the narrowest safe action."></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn--primary" type="submit" name="decision" value="approve">Approve and execute</button>
+            <button class="btn btn--danger" type="submit" name="decision" value="reject">Reject and escalate</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="notice">No approval record. Nothing was written.</div>
+      {% endif %}
+    </div>
+
+    {% if incident.policy_decision %}
+    <div class="card">
+      <div class="card-head">
+        <h2>Policy decision</h2>
+        <span class="pill pill--{{ 'emerald' if incident.policy_decision.allowed else 'ruby' }}">
+          <span class="icon">{{ '✓' if incident.policy_decision.allowed else '✕' }}</span>
+          {{ incident.policy_decision.code }}
+        </span>
+      </div>
+      <p class="small muted">{{ incident.policy_decision.reason }}</p>
+      <div class="checks">
+        {% for check in incident.policy_decision.checks %}
+        <div class="check">
+          <span class="mark {{ 'pass' if check.passed else 'fail' }}">{{ 'PASS' if check.passed else 'FAIL' }}</span>
+          <span><strong>{{ check.name }}</strong> <span class="why">— {{ check.detail }}</span></span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if incident.execution or incident.verification %}
+    <div class="card">
+      <div class="card-head"><h2>Execution and verification</h2></div>
+      {% if incident.execution %}
+        <dl class="kv">
+          <dt>Status</dt><dd><span class="pill pill--{{ 'emerald' if incident.execution.status == 'executed' else 'amber' }}">{{ incident.execution.status }}</span></dd>
+          <dt>Idempotency key</dt><dd class="hash">{{ incident.execution.idempotency_key }}</dd>
+          {% if incident.execution.command %}<dt>Command</dt><dd class="mono small">{{ incident.execution.command|join(" ") }}</dd>{% endif %}
+        </dl>
+        {% if incident.execution.stdout %}<pre class="notice" style="overflow-x: auto;">{{ incident.execution.stdout }}</pre>{% endif %}
+        {% if incident.execution.stderr %}<pre class="notice" style="overflow-x: auto; color: var(--ruby);">{{ incident.execution.stderr }}</pre>{% endif %}
+      {% endif %}
+      {% if incident.verification %}
+        <hr class="rule">
+        <div class="checks">
+          {% for check in incident.verification.checks %}
+          <div class="check">
+            <span class="mark {{ 'pass' if check.passed else 'fail' }}">{{ 'PASS' if check.passed else 'FAIL' }}</span>
+            <span><strong>{{ check.name }}</strong> <span class="why">— {{ check.detail }}</span></span>
+          </div>
+          {% endfor %}
+        </div>
+        <p class="small muted" style="margin-top: 10px;">{{ incident.verification.summary }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <aside class="stack">
+    <div class="card">
+      <div class="card-head"><h3>Audit trail</h3><span class="chip">{{ audit|length }}</span></div>
+      <ul class="audit">
+        {% for event in audit|reverse %}
+        <li>
+          <time>{{ event.ts|short_time }}</time>
+          <div>
+            <span class="node">{{ event.node }}</span>
+            <span class="muted"> · {{ event.actor }}</span>
+            <div>{{ event.action }}{% if event.decision %} → <strong>{{ event.decision }}</strong>{% endif %}</div>
+            {% if event.detail %}<div class="detail">{{ event.detail }}</div>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Cost and limits</h3></div>
+      <dl class="kv">
+        <dt>Model backend</dt><dd class="mono small">{{ incident.model_backend or model }}</dd>
+        <dt>Tokens</dt><dd>{{ incident.tokens_in }} in / {{ incident.tokens_out }} out</dd>
+        <dt>Cost</dt><dd>{{ incident.cost_usd|money }}</dd>
+        <dt>Tool calls</dt><dd>{{ incident.tool_calls }} / {{ settings.max_tool_calls }}</dd>
+        <dt>Write attempts</dt><dd>{{ incident.attempts }}</dd>
+      </dl>
+      <p class="small muted" style="margin-bottom: 0;">Cost is capped per incident at {{ settings.cost_cap_usd|money }} by config.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>What the agent cannot do</h3></div>
+      <ul class="small muted" style="padding-left: 18px; margin: 0;">
+        <li>Read Kubernetes Secrets.</li>
+        <li>Delete, patch, or exec into resources.</li>
+        <li>Write outside the allowed namespaces.</li>
+        <li>Act without a hash-bound human approval.</li>
+        <li>Retry a failed fix without a new approval.</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+
+{% endblock %}

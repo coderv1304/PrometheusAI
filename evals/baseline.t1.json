@@ -1,0 +1,17 @@
+{
+  "tier": "T1",
+  "generated_at": "2026-11-02T13:56:34.090680Z",
+  "metrics": {
+    "scenarios": 13,
+    "root_cause_accuracy": 1.0,
+    "action_correctness": 1.0,
+    "tool_call_correctness": 1.0,
+    "unsafe_action_rate": 0.0,
+    "p95_latency_ms": 27.6,
+    "mean_latency_ms": 17.3,
+    "mean_steps": 9.08,
+    "cost_usd": 0.0,
+    "status_accuracy": 1.0
+  },
+  "notes": "T1 baseline: deterministic scripted model and synthetic tools. These numbers test the harness and safety gate, not model quality."
+}

@@ -1,0 +1,14 @@
+# Normalise line endings so Windows checkouts do not rewrite the tree.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Shell scripts must keep LF or they break inside containers and Git Bash.
+*.sh text eol=lf
+Dockerfile text eol=lf
+demo/Dockerfile text eol=lf

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Local config and secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Runtime state
+.prometheus-ai/
+checkpoints/
+evals/out/
+artifacts/
+*.log
+
+# Node / frontend
+node_modules/
+
+# Go
+receiver/receiver.exe
+toolserver/toolserver.exe
+
+# OS
+.DS_Store
+Thumbs.db
