@@ -1,0 +1,100 @@
+# Pinned requirements for PrometheusAI (generated from uv.lock).
+#
+# Covers runtime, every optional extra (postgres, graph, bedrock, mcp), the
+# development tools (pytest, ruff) and the project itself in editable mode.
+# Requires Python 3.12+.
+#
+# Install:     pip install -r requirements.txt
+# Regenerate the pinned body (then keep this header):
+#   uv export --format requirements-txt --all-extras --no-hashes --no-header --no-annotate
+# Runtime-only: drop the `-e .` line and the dev tools, or use `uv sync --no-dev`.
+#
+# The Docker image does NOT use this file; it installs from uv.lock with
+# `--no-dev --frozen` for reproducibility.
+-e .
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.16.0
+attrs==26.1.0
+boto3==1.43.123
+botocore==1.43.123
+certifi==2026.10.23
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+charset-normalizer==3.5.2
+click==8.5.0
+colorama==0.4.6 ; sys_platform == 'win32'
+cryptography==50.0.2
+distro==1.9.0
+fastapi==0.162.0
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.16.0 ; sys_platform != 'emscripten'
+httptools==0.9.0
+httpx==0.28.1
+httpx-sse==0.4.3
+httpx2==2.16.0
+httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
+idna==3.20
+iniconfig==2.3.1
+jinja2==3.1.6
+jmespath==1.1.0
+jsonpatch==1.39
+jsonpointer==3.7
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+langchain-core==1.7.3
+langchain-protocol==0.0.20
+langgraph==1.2.19
+langgraph-checkpoint==4.3.1
+langgraph-checkpoint-postgres==3.2.0
+langgraph-prebuilt==1.1.1
+langgraph-sdk==0.4.11
+langsmith==0.14.17
+markdown==3.11.2
+markupsafe==3.0.4
+mcp==1.30.0
+opentelemetry-api==1.45.2
+orjson==3.13.0
+ormsgpack==1.13.0
+packaging==26.3
+pgvector==0.5.1
+pluggy==1.7.0
+psycopg==3.3.6
+psycopg-binary==3.3.6 ; implementation_name != 'pypy'
+psycopg-pool==3.3.3
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pydantic==2.14.2
+pydantic-core==2.50.2
+pydantic-settings==2.16.2
+pygments==2.21.0
+pyjwt==2.15.1
+pytest==8.4.2
+pytest-asyncio==0.26.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.4
+python-multipart==0.0.33
+pywin32==312 ; sys_platform == 'win32'
+pyyaml==6.0.3
+referencing==0.37.0
+requests==2.34.2
+requests-toolbelt==1.0.0
+rpds-py==2026.9.1
+ruff==0.17.3
+s3transfer==0.19.3
+six==1.17.0
+sniffio==1.3.1
+sse-starlette==3.6.0
+starlette==1.10.0
+tenacity==9.2.1
+truststore==0.10.5 ; sys_platform != 'emscripten'
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+tzdata==2026.6 ; sys_platform == 'win32'
+urllib3==2.8.0
+uuid-utils==0.19.0
+uvicorn==0.54.0
+uvloop==0.23.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+watchfiles==1.3.0
+websockets==17.4
+xxhash==4.0.2
+zstandard==0.25.0
