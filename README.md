@@ -1,225 +1,203 @@
 # PrometheusAI
 
-An approval-gated incident-response agent for Kubernetes. It investigates an
-alert, proposes a narrow remediation, proves the action can run, asks a human,
-then lets a separate policy service execute it exactly once.
+**Approval-gated incident response for Kubernetes.**
 
-Built as a working vertical slice: the LangGraph workflow, policy engine,
-approval console, Postgres audit trail, Kubernetes manifests and CI all run. The
-demo cluster injects faults into a three-service app; it is **not** production
-incident response.
+PrometheusAI investigates an alert, gathers evidence, proposes a bounded
+remediation, and performs a server-side dry run. A human must approve the exact
+action before a separate policy service can execute it. The system records
+decisions and verifies the outcome.
 
-> **Scope, stated plainly**
->
-> - This is a demo on a local kind cluster with injected faults. It has not
->   handled a real production incident.
-> - T1 results come from a deterministic harness with a scripted model and
->   synthetic tools. They validate routing, approval binding and policy denial.
->   They are **not** model-quality metrics.
-> - T2 (live model) accuracy is **not measured**. No number is published for it.
-> - The agent can only restart, undo or rescale a deployment, within an
->   allowlist and replica bounds. It cannot change images, config, limits or
->   namespaces.
+> **Scope:** This repository is a working demo for injected faults in a local
+> kind cluster. It has not been validated on real production incidents and
+> should not be treated as a production-ready autonomous operator.
 
-## What it does
+## At a glance
 
+- **Human approval before writes.** Approval is bound to the proposal's
+  SHA-256 action hash and expires.
+- **Policy separated from the agent.** The policy service owns the Kubernetes
+  write identity; the agent has read-only RBAC.
+- **Narrow remediation surface.** Only allowlisted restart, undo, and scale
+  operations on named demo deployments are supported.
+- **Fail closed.** Invalid actions, failed dry runs, missing approvals, and
+  policy denials do not proceed to execution.
+- **Auditable and testable.** Decisions, execution results, and evaluation
+  reports have explicit storage and test coverage.
+
+## Screenshots
+
+The console shows incident status and the safety boundary. This captured view
+is the empty state, before any incidents were submitted.
+
+![PrometheusAI incident console](docs/images/incident-console.png)
+
+The evaluation page shows where deterministic evaluation results appear. In
+this captured view, no report had been generated yet.
+
+![PrometheusAI evaluation results page](docs/images/evaluation-results.png)
+
+## How an incident flows
+
+```text
+Alertmanager
+    -> agent investigates with observability and read-only cluster tools
+    -> proposes an allowlisted action
+    -> server-side dry run
+    -> human approval bound to the action hash
+    -> policy service authorizes and executes once
+    -> verification and postmortem
 ```
-Alertmanager → agent → investigate → propose → server-side dry run
-             → human approval (action hash) → policy decision
-             → execute once → verify → postmortem
-```
 
-- Reads Prometheus, Loki and read-only Kubernetes state.
-- Produces a hypothesis and a proposal through a swappable model backend
-  (`fake`, Ollama or Bedrock).
-- Runs a `kubectl --dry-run=server` preflight **before** asking for approval.
-- Requires a human decision bound to the proposal's SHA-256 action hash.
-- Sends the approved action to a separate policy service that owns the only
-  write credential.
-- Verifies the result. A failed verification escalates; it never retries.
-- Writes an append-only audit trail and a postmortem.
-- Fails closed on unknown actions, bad payloads, missing approvals, an
-  unreachable cluster, a failed dry run or an engaged kill switch.
+The agent can use a deterministic fake model, Ollama, or Bedrock. Model output
+does not grant authority: the policy engine enforces the action, target,
+namespace, bounds, approval, and write limits.
 
-## Quickstart (no cluster)
+## Quickstart: synthetic local demo
 
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
-```bash
-git clone <your-repo> PrometheusAI
+```powershell
+git clone https://github.com/coderv1304/PrometheusAI.git
 cd PrometheusAI
 uv sync --extra dev --extra graph --extra postgres
-uv run pytest -q -p no:warnings
+$env:PROMETHEUS_AI_MODEL_BACKEND = "fake"
 uv run prometheus-ai demo --host 127.0.0.1 --port 8000
 ```
 
-Open <http://127.0.0.1:8000>. The UI marks every incident as synthetic.
-While the demo is still running, approve one from another terminal. Replace
-`INCIDENT_ID` with an ID printed by this demo run; IDs change every time the
-demo starts:
+Open <http://127.0.0.1:8000>. The demo prints synthetic incident IDs and the
+development approval token. In another terminal, while the demo server is still
+running, approve an ID printed by that run:
 
-```bash
-uv run prometheus-ai approve INCIDENT_ID \
-  --approver "$USER" \
-  --reason "restart is the narrowest safe action"
+```powershell
+uv run prometheus-ai approve INCIDENT_ID `
+  --approver operator `
+  --reason "restart is the narrowest safe action" `
+  --token dev-approval-token
 ```
 
-The development approval token is `dev-approval-token`. It is rejected outside
-`dev`/`test`/`local`.
+Replace `INCIDENT_ID` with the current run's ID; in-memory demo incidents do
+not persist across restarts. The development token is for local synthetic
+mode only. Never use it outside a development environment.
 
-### Evaluation
+## Verification
 
-```bash
+### Tests passed
+
+The latest local full-suite run reported:
+
+> **PASS — 67 tests passed** with `uv run pytest` (4.61 seconds).
+
+It also emitted 208 `pytest-asyncio` deprecation warnings concerning event-loop
+policy APIs; these were warnings, not test failures. This is a local test
+result, not a claim that the GitHub Actions workflow has run or passed.
+
+Run the suite and lint locally:
+
+```powershell
+uv run pytest
+uv run ruff check src tests scripts
+```
+
+Tests are organized around:
+
+| Area | Tests |
+| --- | --- |
+| API auth and security headers | [`tests/test_api_security.py`](tests/test_api_security.py) |
+| Agent graph approval and no-write guarantees | [`tests/test_graph_security.py`](tests/test_graph_security.py) |
+| Policy decisions and action bounds | [`tests/test_policy.py`](tests/test_policy.py) |
+| Kubernetes manifest invariants | [`tests/test_manifests.py`](tests/test_manifests.py) |
+| Configuration and production defaults | [`tests/test_config.py`](tests/test_config.py) |
+| Secret redaction | [`tests/test_redaction.py`](tests/test_redaction.py) |
+| CLI demo lifecycle | [`tests/test_cli.py`](tests/test_cli.py) |
+| PostgreSQL / pgvector schema | [`tests/test_postgres_schema.py`](tests/test_postgres_schema.py) |
+
+### Deterministic evaluation
+
+Run the T1 evaluation harness:
+
+```powershell
 uv run prometheus-ai eval --tier t1 --verbose
 ```
 
-The committed baseline produces:
+The committed baseline covers 13 hand-authored scenarios. Its recorded
+deterministic results are 100% root-cause, action, tool-call, and status
+accuracy, with a 0% unsafe-action rate. These are harness results, **not live
+model accuracy or production incident metrics**. See
+[`docs/EVALUATION.md`](docs/EVALUATION.md) for methodology and limitations.
 
-| Metric | Result |
-| --- | --- |
-| Scenarios | 13 |
-| Root-cause accuracy | 100% |
-| Action correctness | 100% |
-| Tool-call correctness | 100% |
-| Status accuracy | 100% |
-| Unsafe-action rate | 0% (gate: 0) |
-| p95 latency | ~30 ms locally |
+## Architecture and implementation map
 
-These are harness numbers. Read `docs/EVALUATION.md` before quoting them.
-
-## Safety model
-
-1. **No write before approval.** The graph interrupts before the policy check.
-   A resume payload must match the proposal's action hash.
-2. **No write without the policy engine.** The engine checks the allowlist,
-   namespace, target kind, live resource, parameter bounds, approval hash and
-   expiry, and a per-incident write limit.
-3. **No approval without a passing dry run.** A failed `--dry-run=server`
-   escalates instead of prompting a human.
-4. **No second write after a failed fix.** Verification failure escalates with
-   a recommendation.
-5. **No write credential in the agent.** The policy service is a separate
-   process, namespace and ServiceAccount. The agent has read-only RBAC.
-
-The full control map, threat model and residual risks are in
-`docs/SECURITY.md` and `docs/THREAT_MODEL.md`.
-
-## Architecture
-
-```
-┌──────────────────── prometheus-ai ────────────────────┐
-│ FastAPI API / UI          LangGraph runner            │
-│   webhook, decisions       receive → triage            │
-│   audit, evals             → hypothesize ⇄ evidence    │
-│                            → propose → dry run         │
-│                            → interrupt → policy        │
-│                            → execute → verify → postmortem │
-└───────────────┬───────────────────────┬───────────────┘
-                │ policy token          │ read-only kubectl,
-                ▼                       ▼ Prometheus, Loki
-┌──────────────── policy ───────────────┐   ┌──────── data ────────┐
-│ deterministic engine + kubectl        │   │ Postgres: incidents, │
-│ only write RBAC, idempotency ledger   │   │ audit, checkpoints   │
-└───────────────────┬───────────────────┘   └──────────────────────┘
-                    │ patch/update 3 named deployments
-                    ▼
-                 demo: api, web, worker
-```
-
-See `docs/architecture.md` for the detailed request path.
-
-## Security posture
-
-| Control | Implementation |
-| --- | --- |
-| Credential split | Agent SA read-only; policy SA writes three named deployments |
-| Default deny | NetworkPolicy in all five namespaces; Calico required |
-| Restricted pods | PSS `restricted`, non-root, read-only root, all caps dropped |
-| Approval binding | SHA-256 action hash, expiry, single decision |
-| Dry run | `kubectl --dry-run=server` before approval |
-| Audit | Append-only Postgres trigger |
-| Secrets | Out-of-band creation; production fail-fast on defaults |
-| Supply chain | gitleaks, Trivy, Syft SBOM, Cosign, Dependabot |
-| HTTP | Token auth, CSP and security headers, body/alert limits |
-
-## Deploy on kind
-
-The full ordered sequence is in **`docs/DEPLOYMENT.md`**. Short version:
-
-```bash
-kind create cluster --config deploy/kind-config.yaml
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
-# create namespaces and secrets (see the deployment guide)
-kubectl apply -k deploy/k8s/base
-kubectl -n prometheus-ai port-forward svc/prometheus-ai 8000:8000
-```
-
-The guide also covers image loading, secret generation, RBAC checks,
-NetworkPolicy probes, audit-trigger verification, CI and Cosign verification.
-
-## Configuration
-
-All settings are environment variables with the `PROMETHEUS_AI_` prefix
-(`.env` is supported locally). Important ones:
-
-| Variable | Default | Notes |
+| Component | Purpose | Implementation |
 | --- | --- | --- |
-| `PROMETHEUS_AI_ENV` | `dev` | Outside dev/test/local, insecure defaults fail startup |
-| `PROMETHEUS_AI_MODEL_BACKEND` | `fake` | `fake`, `ollama`, `bedrock` |
-| `PROMETHEUS_AI_POLICY_MODE` | `inprocess` | `http` in the cluster |
-| `PROMETHEUS_AI_DRY_RUN` | `true` | When false, the executor performs the real action |
-| `PROMETHEUS_AI_APPROVER_TOKEN` | dev value | Human decision API |
-| `PROMETHEUS_AI_WEBHOOK_TOKEN` | empty | Required outside dev |
-| `PROMETHEUS_AI_POLICY_TOKEN` | dev value | Agent → policy service |
-| `PROMETHEUS_AI_ALLOWED_NAMESPACES` | `["demo"]` | Policy allowlist |
-| `PROMETHEUS_AI_MAX_WRITES_PER_HOUR` | `3` | Per incident |
+| HTTP API and UI | Webhooks, incident views, approvals, admin endpoints | [`src/prometheus_ai/api/app.py`](src/prometheus_ai/api/app.py), [`src/prometheus_ai/api/templates/`](src/prometheus_ai/api/templates/) |
+| Agent workflow | Investigation graph, evidence gathering, proposal, verification | [`src/prometheus_ai/agent/graph.py`](src/prometheus_ai/agent/graph.py), [`src/prometheus_ai/agent/nodes.py`](src/prometheus_ai/agent/nodes.py) |
+| Policy engine | Deterministic authorization and kill switch | [`src/prometheus_ai/policy/engine.py`](src/prometheus_ai/policy/engine.py), [`src/prometheus_ai/policy/rules.py`](src/prometheus_ai/policy/rules.py) |
+| Policy API and executor | Authenticated policy endpoint and Kubernetes writes | [`src/prometheus_ai/policy/server.py`](src/prometheus_ai/policy/server.py), [`src/prometheus_ai/policy/executor.py`](src/prometheus_ai/policy/executor.py) |
+| Kubernetes inventory | Live, read-only resource lookup | [`src/prometheus_ai/policy/inventory.py`](src/prometheus_ai/policy/inventory.py) |
+| Observability tools | Prometheus, Loki, Kubernetes reads, runbooks | [`src/prometheus_ai/tools/`](src/prometheus_ai/tools/) |
+| Model adapters and redaction | Fake/Ollama/Bedrock adapters and prompt-data redaction | [`src/prometheus_ai/llm/client.py`](src/prometheus_ai/llm/client.py), [`src/prometheus_ai/llm/redact.py`](src/prometheus_ai/llm/redact.py) |
+| Persistence | Incident, audit, and Postgres schema | [`src/prometheus_ai/storage/postgres.py`](src/prometheus_ai/storage/postgres.py), [`src/prometheus_ai/storage/base.py`](src/prometheus_ai/storage/base.py) |
+| Runtime composition | Builds the agent and policy service dependencies | [`src/prometheus_ai/services/bootstrap.py`](src/prometheus_ai/services/bootstrap.py) |
+| CLI | Demo, serving, evaluation, approval, and operations commands | [`src/prometheus_ai/cli.py`](src/prometheus_ai/cli.py) |
 
-See `.env.example` for the full set.
+For the request sequence and component diagram, see
+[`docs/architecture.md`](docs/architecture.md).
 
-## Repository layout
+## Kubernetes deployment
 
-```
-src/prometheus_ai/
-  agent/        graph, nodes, verification, postmortem
-  policy/       deterministic engine, rules, executor, HTTP service
-  api/          FastAPI app, templates, static assets
-  tools/        Prometheus, Loki, read-only kubectl, runbooks
-  llm/          fake/Ollama/Bedrock clients, redaction
-  storage/      in-memory and Postgres repositories
-  evals/        T1 runner, metrics, gate
-  services/     composition root, alert intake
-deploy/
-  k8s/base/     namespaces, RBAC, NetworkPolicy, workloads
-  kind-config.yaml
-demo/           fault-injecting three-service app
-docs/           threat model, security, architecture, ADRs, runbooks
-evals/          T1 fixtures and the committed baseline
-tests/          unit, API, graph-security and manifest tests
-```
+Deployment is deliberately documented as an ordered procedure, including
+cluster prerequisites, secrets, custom pgvector image build/load, RBAC,
+NetworkPolicy probes, and verification:
 
-## Documentation
+- **[Deployment guide](docs/DEPLOYMENT.md)**
+- [Kustomize base resources](deploy/k8s/base/kustomization.yaml)
+- [RBAC and ServiceAccounts](deploy/k8s/base/01-serviceaccounts-rbac.yaml)
+- [NetworkPolicies](deploy/k8s/base/02-networkpolicies.yaml)
+- [PostgreSQL / pgvector workload](deploy/k8s/base/03-postgres.yaml)
+- [Policy service workload](deploy/k8s/base/04-policy-service.yaml)
+- [Agent workload](deploy/k8s/base/05-agent.yaml)
+- [Demo workloads](deploy/k8s/base/06-demo-app.yaml)
+- [PostgreSQL image build](deploy/postgres/Dockerfile)
+- [Demo fault injection](demo/fault.sh)
 
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — ordered commands from checkout to
-  a verified cluster.
-- [`docs/architecture.md`](docs/architecture.md) — components and request path.
-- [`docs/SECURITY.md`](docs/SECURITY.md) — controls and verification commands.
-- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — assets, threats, residual risk.
-- [`docs/EVALUATION.md`](docs/EVALUATION.md) — what T1 does and does not measure.
-- [`docs/adr/`](docs/adr/) — the decisions behind the gate, split service,
-  policy-as-code, dry run, least privilege, supply chain and no-retry rule.
-- [`docs/runbooks/`](docs/runbooks/) — the runbooks the agent retrieves.
-- [`docs/VERSIONS.md`](docs/VERSIONS.md) — generated dependency capture.
+Do not delete the database PVC when troubleshooting. Keep credentials out of
+source control; use the example secret manifest only as a template:
+[`deploy/k8s/base/secrets.example.yaml`](deploy/k8s/base/secrets.example.yaml).
 
-## Limitations
+## CI and supply chain
 
-- Single cluster, single Postgres replica, one agent replica.
-- Tokens are static shared secrets, not workload identity.
-- Redaction is regex-based and can miss unusual formats.
-- The execution ledger is SQLite on an `emptyDir`; it does not survive pod
-  replacement.
-- The T1 scenario set is hand-authored and small.
-- No live model baseline; T2 accuracy is unmeasured.
+- [CI workflow](.github/workflows/ci.yml) runs Ruff, pytest, the T1 gate,
+  version-report smoke test, container builds/smoke test, and manifest
+  rendering/schema validation.
+- [Security workflow](.github/workflows/security.yml) contains secret and
+  image security checks, SBOM generation, and keyless image signing.
+- [Dependabot configuration](.github/dependabot.yml).
 
-## License
+Workflow definitions describe configured checks; they do not prove a specific
+run has passed. Check the Actions tab for the result of your commit.
+Cosign verification requires a successfully signed image and its exact digest.
 
-MIT. See `pyproject.toml`.
+## Security and design documentation
+
+- [Security controls and verification](docs/SECURITY.md)
+- [Threat model and residual risks](docs/THREAT_MODEL.md)
+- [Architecture](docs/architecture.md)
+- [Evaluation methodology](docs/EVALUATION.md)
+- [Architecture decision records](docs/adr/)
+- [Operational runbooks](docs/runbooks/)
+- [Generated dependency versions](docs/VERSIONS.md)
+- [Environment variable template](.env.example)
+- [Project dependencies and commands](pyproject.toml)
+
+## Known limitations
+
+- The supported deployment is a small kind demonstration, not a production
+  high-availability setup.
+- The example cluster uses static shared tokens rather than workload identity.
+- Secret redaction is pattern-based and cannot guarantee detection of every
+  sensitive format.
+- The execution idempotency ledger is SQLite on an `emptyDir` and does not
+  survive pod replacement.
+- T1 is a small deterministic harness; live-model quality is not measured.
+- The demo fault injector intentionally changes only the demo application's
+  fault mode; it is separate from the agent's remediation API.
