@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #
 # Tiny stdlib-only demo service used to inject faults into the demo namespace.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid 10001 --home-dir /app --no-create-home \
